@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import math
+import scipy.optimize as opti
 
 
 #Store the values of Time(s)/60 in liste_time_min
@@ -34,7 +35,6 @@ def line_annotate(axe, liste, x, y, xtext, ytext, text):
     connectionstyle="arc"))
     return
 
-
 #ticks on the plot
 def tick(liste_time_min, min_tick):
     last_tick = liste_time_min.max()
@@ -44,21 +44,54 @@ def tick(liste_time_min, min_tick):
     else:
         plt.xticks(range(0,int(last_tick),min_tick))
 
+def fit(t, a, b):
+    #return a*t+b
+    return -(a+b*np.sqrt(t))
+
 #returns the values of sqrt(t) and df3/3 from 6 or 11 to 60 min
 # * to modify *
-def prepare_data_fit(liste_sqrt, liste_df3_fit, liste_time_min, liste_df3, feuille, size):
-#    j = 0
+def prepare_print_datafit(liste_sqrt, liste_df3_cut, liste_time_min, liste_df3,
+feuille, size, min, max):
     for i in range(size):
         liste_sqrt[i] = None
+        if liste_time_min[i]<=11:
+            min=i
         if 11 <= liste_time_min[i] <= 60:
-            liste_sqrt[i] = -math.sqrt(liste_time_min[i]-11)
-#            j=j+1
+            max=i
+            # laisser liste_sqrt se remplir ici ou annuler comme ce sera remplacé par le fit ?
 
+            liste_sqrt[i] = -np.sqrt(liste_time_min[i]-11)
         if liste_time_min[i] <=60:
-            liste_df3_fit[i] = liste_df3[i]
+            liste_df3_cut[i] = liste_df3[i]
         else:
-            liste_df3_fit[i] = None
-    return liste_sqrt, liste_df3_fit
+            liste_df3_cut[i] = None
+    # return liste_sqrt, liste_df3_cut
+    return liste_df3_cut, min, max
+
+def fitting_parameters(a, b, fit, liste_time_min, liste_df3_cut, min, max):
+    j=0
+    size = max-min
+
+    liste_time_min_fit = np.zeros(size)
+    liste_df3_cut_fit = np.zeros(size)
+    for i in range(min, max):
+        liste_time_min_fit[j] = liste_time_min[i]
+        liste_df3_cut_fit[j] = liste_df3_cut[i]
+        j=j+1
+
+    #à modifier pour seulement avoir le fit sur les éléments entre 11 et 60 min
+
+    (a,b) = opti.curve_fit(fit, liste_time_min_fit, liste_df3_cut_fit)
+    return a, b
+
+# Calcule y_théorique avec les valeurs du fit
+def fit_data(y_theo, liste_df3_cut, liste_time_min, a, b, size_fit):
+    for i in range(size_fit):
+        if i<min:
+            y_theo[i] = None
+        else:
+            y_theo[i] = fit(liste_time_min[i], a, b)
+    return y_theo
 
 if __name__ == "__main__":
     if len(sys.argv) < 4 :
@@ -78,8 +111,7 @@ if __name__ == "__main__":
     liste_df3 = np.zeros(size)
     liste_dD3 = np.zeros(size)
     liste_sqrt = np.zeros(size)
-    liste_df3_fit = np.zeros(size)
-
+    liste_df3_cut = np.zeros(size)
 
     #make a figure y=f(x)
     fig, axis = plt.subplots(2,1)
@@ -128,11 +160,24 @@ if __name__ == "__main__":
 
     #second plot : ∆f3/3 = f(t) with t^1/2 fit
     #get data
-    liste_sqrt, liste_df3_fit = prepare_data_fit(liste_sqrt, liste_df3_fit,
-    liste_time_min, liste_df3, feuille, size)
+    a = np.zeros(2)
+    b = np.zeros(2)
+    min, max = 0, 0
+
+    liste_df3_cut, min, max = prepare_print_datafit(liste_sqrt, liste_df3_cut,
+    liste_time_min, liste_df3, feuille, size, min, max)
+
+    (a,b) = fitting_parameters(a, b, fit, liste_time_min, liste_df3_cut, min, max)
+
+    size_fit = len(liste_df3_cut)
+    y_theo = np.zeros (size_fit)
+
+    y_theo = fit_data(y_theo, liste_df3_cut, liste_time_min, a[0], a[1], size_fit)
+
+    # liste_sqrt, liste_df3_cut = prepare_print_datafit(liste_sqrt, liste_df3_cut, liste_time_min, liste_df3, feuille, size)
 
     #plot ∆f3/3 = f(t) until 60 min
-    axis[1].plot(liste_time_min, liste_df3_fit, color = 'black', linestyle = 'none',
+    axis[1].plot(liste_time_min, liste_df3_cut, color = 'black', linestyle = 'none',
     marker = 's', markersize = 0.5)
     axis[1].set_ylabel('∆f$_3$/3 (Hz)', fontsize = 16, color = 'black')
     axis[1].set_xlabel('Time (min)', fontsize = 16)
@@ -141,8 +186,9 @@ if __name__ == "__main__":
     ax3 = axis[1].twinx()
     limite_y = axis[1].get_ylim()
 
-    ax3.plot(liste_time_min, liste_sqrt, color = 'red',linestyle = '--',
+    ax3.plot(liste_time_min, y_theo, color = 'red',linestyle = '--',
     label = '-$\sqrt{t}$')
+
     ax3.set_ylim(limite_y)
 
 
