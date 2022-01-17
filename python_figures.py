@@ -6,7 +6,6 @@ import pandas as pd
 import math
 import scipy.optimize as opti
 
-
 #Store the values of Time(s)/60 in liste_time_min
 def time_min(liste_time_min, feuille, size):
     for i in range(size):
@@ -30,9 +29,10 @@ def line_annotate(axe, liste, x, y, xtext, ytext, text):
     axe.plot([x,x], [y, liste.min()-1], color='black', linewidth=1.5, linestyle='--')
     # x,y -> where the arrow points at
     # xtext, ytext -> where the text is
-    axe.annotate(text, xy=(x, y), xycoords='data', xytext=(xtext, ytext),
-    textcoords='offset points', fontsize=10, arrowprops=dict(arrowstyle="->",
-    connectionstyle="arc"))
+    if (xtext, ytext) != (0,0):
+        axe.annotate(text, xy=(x, y), xycoords='data', xytext=(xtext, ytext),
+        textcoords='offset points', fontsize=10, arrowprops=dict(arrowstyle="->",
+        connectionstyle="arc"))
     return
 
 #ticks on the plot
@@ -44,31 +44,30 @@ def tick(liste_time_min, min_tick):
     else:
         plt.xticks(range(0,int(last_tick),min_tick))
 
+#function to be fitted
 def fit(t, a, b):
-    #return a*t+b
-    return -(a+b*np.sqrt(t))
+    return a*t+b
+    #return -(a+b*np.log(t))
+    #return -(a+b*np.sqrt(t))
 
 #returns the values of sqrt(t) and df3/3 from 6 or 11 to 60 min
-# * to modify *
-def prepare_print_datafit(liste_sqrt, liste_df3_cut, liste_time_min, liste_df3,
+def prepare_print_datafit(liste_df3_cut, liste_time_min, liste_df3,
 feuille, size, min, max):
     for i in range(size):
-        liste_sqrt[i] = None
         if liste_time_min[i]<=11:
+                # * to modify *
             min=i
-        if 11 <= liste_time_min[i] <= 60:
+        if 11 <= liste_time_min[i] <= 14:
+                # * to modify *
             max=i
-            # laisser liste_sqrt se remplir ici ou annuler comme ce sera remplacé par le fit ?
-
-            liste_sqrt[i] = -np.sqrt(liste_time_min[i]-11)
-        if liste_time_min[i] <=60:
+        if liste_time_min[i] <= 60:
+                # * to modify *
             liste_df3_cut[i] = liste_df3[i]
         else:
             liste_df3_cut[i] = None
-    # return liste_sqrt, liste_df3_cut
     return liste_df3_cut, min, max
 
-def fitting_parameters(a, b, fit, liste_time_min, liste_df3_cut, min, max):
+def fitting_parameters(fit, liste_time_min, liste_df3_cut, min, max):
     j=0
     size = max-min
 
@@ -79,10 +78,8 @@ def fitting_parameters(a, b, fit, liste_time_min, liste_df3_cut, min, max):
         liste_df3_cut_fit[j] = liste_df3_cut[i]
         j=j+1
 
-    #à modifier pour seulement avoir le fit sur les éléments entre 11 et 60 min
-
-    (a,b) = opti.curve_fit(fit, liste_time_min_fit, liste_df3_cut_fit)
-    return a, b
+    (var,M_cov) = opti.curve_fit(fit, liste_time_min_fit, liste_df3_cut_fit)
+    return (var,M_cov)
 
 # Calcule y_théorique avec les valeurs du fit
 def fit_data(y_theo, liste_df3_cut, liste_time_min, a, b, size_fit):
@@ -110,13 +107,13 @@ if __name__ == "__main__":
     liste_time_min = np.zeros(size)
     liste_df3 = np.zeros(size)
     liste_dD3 = np.zeros(size)
-    liste_sqrt = np.zeros(size)
     liste_df3_cut = np.zeros(size)
 
     #make a figure y=f(x)
     fig, axis = plt.subplots(2,1)
 
     #first plot, first axis ∆f3/3 = f(t)
+    #fonction pour ça ?
     axis[0].plot(time_min(liste_time_min, feuille, size), df3(liste_df3, feuille,
     size), color='black',  linestyle='none', marker='s', markersize=0.5)
 
@@ -159,22 +156,23 @@ if __name__ == "__main__":
     tick(liste_time_min, 30)
 
     #second plot : ∆f3/3 = f(t) with t^1/2 fit
-    #get data
-    a = np.zeros(2)
-    b = np.zeros(2)
     min, max = 0, 0
-
-    liste_df3_cut, min, max = prepare_print_datafit(liste_sqrt, liste_df3_cut,
-    liste_time_min, liste_df3, feuille, size, min, max)
-
-    (a,b) = fitting_parameters(a, b, fit, liste_time_min, liste_df3_cut, min, max)
-
     size_fit = len(liste_df3_cut)
     y_theo = np.zeros (size_fit)
 
-    y_theo = fit_data(y_theo, liste_df3_cut, liste_time_min, a[0], a[1], size_fit)
+    #get indices of 11 and 60 min and df3 until 60 min
+    liste_df3_cut, min, max = prepare_print_datafit(liste_df3_cut, liste_time_min,
+    liste_df3, feuille, size, min, max)
 
-    # liste_sqrt, liste_df3_cut = prepare_print_datafit(liste_sqrt, liste_df3_cut, liste_time_min, liste_df3, feuille, size)
+    #get fitting parameters
+    (var,M_cov) = fitting_parameters (fit, liste_time_min, liste_df3_cut, min, max)
+    #print(M_cov)
+
+    #get fitted data
+    y_theo = fit_data(y_theo, liste_df3_cut, liste_time_min, var[0], var[1], size_fit)
+
+    # get limite_y
+    limite_y = axis[0].get_ylim()
 
     #plot ∆f3/3 = f(t) until 60 min
     axis[1].plot(liste_time_min, liste_df3_cut, color = 'black', linestyle = 'none',
@@ -184,11 +182,19 @@ if __name__ == "__main__":
 
     #plot t^1/2 = f(t)
     ax3 = axis[1].twinx()
-    limite_y = axis[1].get_ylim()
+    # * to modify *
+    #func = ['%.2f'%var[0], ' log(t) + ', '%.2f'%var[1]]
+    #func = ['%.2f'%var[0], 't + ', '%2.f' %var[1]]
+    func = ['%.2f'%var[0], ' t$^{1/2}$', ' + ', '%2.f' %var[1]]
 
-    ax3.plot(liste_time_min, y_theo, color = 'red',linestyle = '--',
-    label = '-$\sqrt{t}$')
 
+    line_annotate(axis[1], liste_df3, 11, 1, 0, 0, r' ')
+    line_annotate(axis[1], liste_df3, 14, 1, 0, 0, r' ')
+
+    txt = "".join(map(str, func))
+    ax3.plot(liste_time_min, y_theo, color = 'red',linestyle = '--', label = txt)
+
+    axis[1].set_ylim(limite_y)
     ax3.set_ylim(limite_y)
 
 
